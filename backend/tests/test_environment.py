@@ -13,3 +13,13 @@ def test_imports():
     assert fastapi.__version__ is not None
     assert pydantic.__version__ is not None
     assert httpx.__version__ is not None
+
+def test_app_package_imports():
+    """Verify the project imports as `app.*` (backend/ is on sys.path)."""
+    import app.api.v1
+    import app.core
+    import app.engine.judge
+    import app.engine.mutators
+    import app.engine.targets
+    from pathlib import Path
+    assert Path(app.__file__).parent.parent.name == "backend"
