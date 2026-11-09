@@ -1,5 +1,14 @@
+/**
+ * Percentage for display. Never rounds a non-zero rate to "0%" (one false alarm
+ * in 208 is 0.48%, and "0%" would claim there were none) or a non-full rate to "100%".
+ */
 export function pct(value: number, digits = 0): string {
-  return `${(value * 100).toFixed(digits)}%`
+  const percent = value * 100
+  const step = 1 / 10 ** digits
+  const shown = percent.toFixed(digits)
+  if (percent > 0 && Number(shown) === 0) return `<${step}%`
+  if (percent < 100 && Number(shown) === 100) return `>${100 - step}%`
+  return `${shown}%`
 }
 
 export function ms(value: number): string {
