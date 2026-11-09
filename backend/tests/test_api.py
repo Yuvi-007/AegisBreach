@@ -13,7 +13,14 @@ from app.core.store import RunStore, get_run_store
 from app.engine.judge.evaluator import BenchmarkMetrics, EvaluationResult
 from app.engine.targets.base import BaseTargetAdapter, TargetResponse
 from app.engine.targets.mock import MockTargetAdapter
-from app.main import DEFAULT_CORS_ORIGINS, app, cors_origins, create_app
+from app.main import (
+    DEFAULT_CORS_ORIGINS,
+    DEFAULT_STATIC_DIR,
+    app,
+    cors_origins,
+    create_app,
+    static_dir,
+)
 
 API = "/api/v1"
 MOCK_RUN = {"target_type": "mock", "suite_names": ["owasp_llm_top10"]}
@@ -89,6 +96,88 @@ async def test_root(client):
     response = await client.get("/")
     assert response.status_code == 200
     assert response.json() == {"service": "AegisBreach API", "version": "1.0.0", "status": "ok", "docs": "/docs"}
+
+
+# --- built frontend serving --------------------------------------------------------
+
+INDEX_HTML = "<!doctype html><title>AegisBreach</title><div id=root></div>"
+
+
+@pytest.fixture
+def frontend_dir(tmp_path, monkeypatch):
+    (tmp_path / "index.html").write_text(INDEX_HTML, encoding="utf-8")
+    (tmp_path / "assets").mkdir()
+    (tmp_path / "assets" / "app.js").write_text("console.info('ok')", encoding="utf-8")
+    monkeypatch.setenv("AEGIS_STATIC_DIR", str(tmp_path))
+    return tmp_path
+
+
+@pytest_asyncio.fixture
+async def site(frontend_dir, store):
+    """Client for an app built with a frontend folder present."""
+    site_app = create_app()
+    site_app.dependency_overrides[get_run_store] = lambda: store
+    transport = httpx.ASGITransport(app=site_app)
+    headers = {"X-API-Key": TEST_API_KEY}
+    async with httpx.AsyncClient(transport=transport, base_url="http://test", headers=headers) as c:
+        yield c
+
+
+def test_static_dir_needs_an_index_html(tmp_path, monkeypatch):
+    monkeypatch.setenv("AEGIS_STATIC_DIR", str(tmp_path))
+    assert static_dir() is None
+    (tmp_path / "index.html").write_text(INDEX_HTML, encoding="utf-8")
+    assert static_dir() == tmp_path
+
+
+def test_static_dir_defaults_to_the_app_package(monkeypatch):
+    monkeypatch.delenv("AEGIS_STATIC_DIR", raising=False)
+    assert DEFAULT_STATIC_DIR.parent.name == "app"
+    assert static_dir() == (DEFAULT_STATIC_DIR if (DEFAULT_STATIC_DIR / "index.html").is_file() else None)
+
+
+@pytest.mark.asyncio
+async def test_frontend_index_and_assets_are_served(site):
+    index = await site.get("/")
+    assert index.status_code == 200
+    assert index.headers["content-type"].startswith("text/html")
+    assert index.text == INDEX_HTML
+
+    asset = await site.get("/assets/app.js")
+    assert asset.status_code == 200
+    assert asset.text == "console.info('ok')"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path", ["/runs", "/runs/3f2a9c1e", "/some/deep/link"])
+async def test_client_side_routes_fall_back_to_index(site, path):
+    response = await site.get(path)
+    assert response.status_code == 200
+    assert response.text == INDEX_HTML
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path", ["/api/v1/nope", "/api", "/redoc/extra", "/docs/extra"])
+async def test_fallback_never_answers_api_or_docs_paths(site, path):
+    response = await site.get(path)
+    assert response.status_code == 404
+    assert response.text != INDEX_HTML
+
+
+@pytest.mark.asyncio
+async def test_api_and_docs_still_win_over_the_frontend(site):
+    health = await site.get(f"{API}/health")
+    assert health.status_code == 200
+    assert health.json()["status"] == "ok"
+    assert (await site.get(f"{API}/mutators")).status_code == 200
+    assert (await site.get("/docs")).status_code == 200
+    assert (await site.get("/openapi.json")).json()["info"]["title"] == "AegisBreach API"
+
+
+@pytest.mark.asyncio
+async def test_frontend_rejects_non_get_methods(site):
+    response = await site.post("/runs/abc")
+    assert response.status_code == 405
 
 
 @pytest.mark.asyncio

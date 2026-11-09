@@ -1,0 +1,20 @@
+services:
+  aegisbreach:
+    build: .
+    image: aegisbreach:latest
+    ports:
+      - "8000:8000"
+    # Values come from the shell or from .env next to this file.
+    environment:
+      AEGIS_API_KEY: ${AEGIS_API_KEY:?Set AEGIS_API_KEY in .env or your shell}
+      AEGIS_ENV: ${AEGIS_ENV:-production}
+      # Only read by the test suite; has no effect on the running server.
+      AEGIS_LIVE_TESTS: ${AEGIS_LIVE_TESTS:-0}
+      # Only needed if a browser app on another origin calls this API.
+      AEGIS_CORS_ORIGINS: ${AEGIS_CORS_ORIGINS:-}
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped

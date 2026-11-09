@@ -1,0 +1,32 @@
+# VCS and local environments
+.git
+.gitignore
+venv/
+.venv/
+
+# Python caches and test output
+**/__pycache__
+**/*.py[cod]
+.pytest_cache
+.ruff_cache
+.coverage
+htmlcov/
+
+# Frontend dependencies and builds (rebuilt inside the image)
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+backend/app/static/
+
+# Secrets: pass settings through the environment instead
+**/.env
+**/.env.*
+**/*.pem
+**/*.key
+
+# Not needed in the image
+backend/tests/
+.vscode/
+.idea/
+.claude/
+*.md

@@ -4,7 +4,7 @@
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-009688?logo=fastapi&logoColor=white)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
 ![TypeScript](https://img.shields.io/badge/TypeScript-7-3178C6?logo=typescript&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-461%20passed-brightgreen)
+![Tests](https://img.shields.io/badge/tests-474%20passed-brightgreen)
 ![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)
 ![Ruff](https://img.shields.io/badge/ruff-passing-brightgreen)
 
@@ -35,6 +35,7 @@ with a deterministic judge. Benign control prompts run alongside the attacks, so
 - [Pipeline Components](#pipeline-components)
 - [Engineering & Security Highlights](#engineering--security-highlights)
 - [Quickstart](#quickstart)
+- [Run with Docker](#run-with-docker)
 - [Configuration](#configuration)
 - [Using the API](#using-the-api)
 - [Testing & Quality Gates](#testing--quality-gates)
@@ -181,7 +182,8 @@ A Vite + React 19 + Tailwind CSS 4 single-page app with three views:
 - **History**: past runs with their key rates.
 
 The API key is entered in the header dialog and stored only in the browser. In development, Vite proxies
-`/api` to the backend, so no CORS setup is needed.
+`/api` to the backend, so no CORS setup is needed. In production the backend serves the built app itself
+(see [Run with Docker](#run-with-docker)), so the UI and API share one origin.
 
 ---
 
@@ -236,7 +238,7 @@ is zero. p95 latency uses the **nearest-rank** method. The same results always p
 
 ### Full Test Coverage
 
-- **461 tests passing**, **100% line coverage** across the backend (`backend/app`, 946 statements).
+- **474 tests passing**, **100% line coverage** across the backend (`backend/app`, 946 statements).
 - **Ruff:** all checks pass.
 - **Bandit:** zero findings at any severity (low, medium, or high) in `backend/app`.
 
@@ -256,7 +258,7 @@ From the repository root, in PowerShell:
 ```powershell
 python -m venv venv
 .\venv\Scripts\activate
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 
 Copy-Item .env.example .env
 # Edit .env and set AEGIS_API_KEY (see Configuration below)
@@ -274,7 +276,7 @@ uvicorn app.main:app --app-dir backend --reload --env-file .env
 ```bash
 python3 -m venv venv
 source venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 cp .env.example .env
 uvicorn app.main:app --app-dir backend --reload --env-file .env
 ```
@@ -303,6 +305,35 @@ Open **http://localhost:5173**, click the key icon in the header, and paste the 
 
 ---
 
+## Run with Docker
+
+One container serves the API and the built dashboard on port 8000. You only need Docker.
+
+```powershell
+Copy-Item .env.example .env   # then set a real AEGIS_API_KEY in .env
+docker compose up --build
+```
+
+Open **http://localhost:8000** and enter the same API key in the header dialog. API docs are at
+**http://localhost:8000/docs**.
+
+How the image is built ([`Dockerfile`](Dockerfile)):
+
+- **Stage 1 (`node:20-alpine`):** `npm ci` and `npm run build` produce the frontend bundle.
+- **Stage 2 (`python:3.12-slim`):** installs only the runtime packages from `requirements.txt`, copies
+  `backend/app`, `config/`, and the bundle (into `backend/app/static`), then runs uvicorn as an unprivileged
+  `aegis` user. A health check calls `/api/v1/health`.
+
+[`docker-compose.yml`](docker-compose.yml) passes `AEGIS_API_KEY` (required; compose stops with an error if it
+is missing), `AEGIS_ENV`, `AEGIS_LIVE_TESTS`, and `AEGIS_CORS_ORIGINS` from your shell or `.env`. The container runs
+with a read-only filesystem and `no-new-privileges`. `.env` is never copied into the image.
+
+When `backend/app/static/index.html` exists, FastAPI serves the dashboard from `/`. Unknown paths such as
+`/runs/<id>` return the app's `index.html`, but anything under `/api`, `/docs`, `/redoc`, or `/openapi.json`
+keeps its normal response, so a mistyped API URL still gets a JSON `404`.
+
+---
+
 ## Configuration
 
 ### Backend (`.env` in the repo root)
@@ -313,6 +344,7 @@ Open **http://localhost:5173**, click the key icon in the header, and paste the 
 | `AEGIS_ENV` | No | unset (treated as production) | Set to `development` to allow unauthenticated requests, **but only while `AEGIS_API_KEY` is empty**. Any other value keeps protected routes locked until a real key is set. |
 | `AEGIS_CORS_ORIGINS` | No | `localhost`/`127.0.0.1` on ports `5173` and `3000` | Comma-separated browser origins allowed to call the API. |
 | `AEGIS_LIVE_TESTS` | No | unset | Set to `1` to also run the live tests that call the deployed NeMo-Shield service. Off by default so the suite runs offline. |
+| `AEGIS_STATIC_DIR` | No | `backend/app/static` | Folder holding a built frontend (`index.html`) to serve from `/`. If there is no `index.html`, `/` returns service info as JSON. |
 
 ### Frontend (optional)
 
@@ -369,7 +401,7 @@ The URL must resolve to a public address.
 # Full suite with coverage (live tests are skipped unless AEGIS_LIVE_TESTS=1)
 python -m pytest --cov=backend/app --cov-report=term-missing
 
-# Lint and security scan (dev tools: pip install ruff bandit)
+# Lint and security scan (installed by requirements-dev.txt)
 ruff check .
 bandit -r backend/app
 
@@ -381,7 +413,7 @@ npm run build
 
 | Gate | Result |
 | --- | --- |
-| pytest | 461 passed, 2 skipped (live) |
+| pytest | 474 passed; live tests skip unless `AEGIS_LIVE_TESTS=1` or without network |
 | Coverage | 100% of `backend/app` |
 | Ruff | All checks passed |
 | Bandit | 0 low / 0 medium / 0 high |
@@ -394,7 +426,7 @@ npm run build
 AegisBreach/
 ├── backend/
 │   ├── app/
-│   │   ├── main.py                  # FastAPI app factory, CORS, startup auth warnings
+│   │   ├── main.py                  # App factory, CORS, auth warnings, frontend serving
 │   │   ├── api/v1/                  # Router + endpoints (health, benchmarks)
 │   │   ├── core/
 │   │   │   ├── security.py          # Anti-SSRF, DNS pinning, API key auth
@@ -409,9 +441,13 @@ AegisBreach/
 │   └── tests/                       # pytest suite
 ├── config/benchmarks/               # Seed suites (OWASP LLM Top 10, benign controls)
 ├── frontend/                        # React 19 + Vite + Tailwind dashboard
+├── .dockerignore
 ├── .env.example
+├── Dockerfile                       # Multi-stage build: Node frontend → Python runtime
+├── docker-compose.yml
 ├── pytest.ini
-├── requirements.txt
+├── requirements.txt                 # Runtime dependencies
+├── requirements-dev.txt             # + test and lint tools
 └── ruff.toml
 ```
 
