@@ -1,27 +1,27 @@
-import { ChevronRight, Search, SearchX } from 'lucide-react'
+import { Search, SearchX } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import type { EvaluationResult, Outcome } from '../../api/types'
-import { categoryLabel, mutatorTitle, ORIGINAL } from '../../lib/catalog'
+import { categoryLabel, mutatorTitle } from '../../lib/catalog'
 import { ms } from '../../lib/format'
 import { ERROR_OUTCOMES, OUTCOMES } from '../../lib/outcomes'
 import { VisibleText } from '../VisibleText'
-import { Button, cx, EmptyState } from '../ui'
+import { Button, Chip, cx, EmptyState } from '../ui'
 
-type OutcomeFilter = 'all' | 'attention' | Outcome | 'errors'
+type Filter = 'all' | 'BYPASSED' | 'DEFENDED' | 'FALSE_POSITIVE' | 'errors'
 
-const PAGE_SIZE = 60
+const PAGE_SIZE = 50
+// Header and rows share these columns so the list reads as a table.
+const COLUMNS = 'md:grid-cols-[7.5rem_5.5rem_8rem_minmax(0,1fr)_4.5rem]'
 
-const FILTERS: { value: OutcomeFilter; label: string; match: (o: Outcome) => boolean }[] = [
+const FILTERS: { value: Filter; label: string; match: (o: Outcome) => boolean; optional?: boolean }[] = [
   { value: 'all', label: 'All', match: () => true },
-  { value: 'attention', label: 'Needs attention', match: (o) => o === 'BYPASSED' || o === 'FALSE_POSITIVE' },
   { value: 'BYPASSED', label: 'Bypassed', match: (o) => o === 'BYPASSED' },
   { value: 'DEFENDED', label: 'Defended', match: (o) => o === 'DEFENDED' },
-  { value: 'FALSE_POSITIVE', label: 'False alarm', match: (o) => o === 'FALSE_POSITIVE' },
-  { value: 'BENIGN_PASS', label: 'Allowed', match: (o) => o === 'BENIGN_PASS' },
-  { value: 'errors', label: 'Errors', match: (o) => ERROR_OUTCOMES.has(o) },
+  { value: 'FALSE_POSITIVE', label: 'False positive', match: (o) => o === 'FALSE_POSITIVE', optional: true },
+  { value: 'errors', label: 'Errors', match: (o) => ERROR_OUTCOMES.has(o), optional: true },
 ]
 
-/** Filterable list of every prompt. Reports the visible order so the detail panel can step through it. */
+/** Searchable, filterable list of every prompt. Reports the visible order for prev/next in the drawer. */
 export function TraceExplorer({
   results,
   onSelect,
@@ -29,14 +29,9 @@ export function TraceExplorer({
   results: EvaluationResult[]
   onSelect: (index: number, visibleOrder: number[]) => void
 }) {
-  const [filter, setFilter] = useState<OutcomeFilter>('all')
-  const [disguise, setDisguise] = useState('all')
-  const [category, setCategory] = useState('all')
+  const [filter, setFilter] = useState<Filter>('all')
   const [query, setQuery] = useState('')
   const [limit, setLimit] = useState(PAGE_SIZE)
-
-  const disguises = useMemo(() => unique(results.map((r) => r.mutator ?? ORIGINAL)), [results])
-  const categories = useMemo(() => unique(results.map((r) => r.category ?? 'unknown')), [results])
 
   const visible = useMemo(() => {
     const match = FILTERS.find((f) => f.value === filter)!.match
@@ -46,36 +41,21 @@ export function TraceExplorer({
       .filter(
         ({ result }) =>
           match(result.outcome) &&
-          (disguise === 'all' || (result.mutator ?? ORIGINAL) === disguise) &&
-          (category === 'all' || (result.category ?? 'unknown') === category) &&
-          (!q || result.prompt.toLowerCase().includes(q) || (result.original_seed_id ?? '').toLowerCase().includes(q)),
+          (!q ||
+            result.prompt.toLowerCase().includes(q) ||
+            (result.original_seed_id ?? '').toLowerCase().includes(q) ||
+            mutatorTitle(result.mutator).toLowerCase().includes(q)),
       )
-  }, [results, filter, disguise, category, query])
-
+  }, [results, filter, query])
   const order = visible.map((v) => v.index)
-  const filtersActive = filter !== 'all' || disguise !== 'all' || category !== 'all' || query !== ''
-
-  function reset() {
-    setFilter('all')
-    setDisguise('all')
-    setCategory('all')
-    setQuery('')
-  }
 
   return (
-    <div className="rounded-xl border border-line bg-panel">
-      <div className="space-y-3 border-b border-line p-4 sm:p-5">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h3 className="font-semibold">Every prompt, in detail</h3>
-          <p className="text-xs text-muted tabular">
-            Showing {visible.length} of {results.length}
-          </p>
-        </div>
-
-        <div role="group" aria-label="Filter by outcome" className="flex flex-wrap gap-1.5">
+    <div className="overflow-hidden rounded-xl border border-line bg-panel">
+      <div className="flex flex-col gap-3 border-b border-line p-3 sm:flex-row sm:items-center sm:justify-between">
+        <div role="group" aria-label="Filter by outcome" className="flex flex-wrap gap-1">
           {FILTERS.map((f) => {
             const count = results.filter((r) => f.match(r.outcome)).length
-            if (count === 0 && f.value !== 'all' && f.value !== filter) return null
+            if (f.optional && count === 0) return null
             const active = filter === f.value
             return (
               <button
@@ -87,130 +67,86 @@ export function TraceExplorer({
                   setLimit(PAGE_SIZE)
                 }}
                 className={cx(
-                  'inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors',
-                  active ? 'border-ink bg-ink text-paper' : 'border-line bg-panel text-ink-soft hover:border-line-strong',
+                  'inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm font-medium transition-colors',
+                  active ? 'bg-ink text-paper' : 'text-ink-soft hover:bg-sunken',
                 )}
               >
                 {f.label}
-                <span className={cx('tabular', active ? 'text-paper/70' : 'text-muted')}>{count}</span>
+                <span className={cx('text-xs tabular', active ? 'text-paper/70' : 'text-muted')}>{count}</span>
               </button>
             )
           })}
         </div>
-
-        <div className="grid gap-2 sm:grid-cols-[1fr_auto_auto]">
-          <label className="relative">
-            <span className="sr-only">Search prompts</span>
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" aria-hidden />
-            <input
-              type="search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search prompt text or ID"
-              className="h-9 w-full rounded-lg border border-line-strong bg-panel pl-9 pr-3 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
-            />
-          </label>
-          <Select label="Disguise" value={disguise} onChange={setDisguise} options={disguises} format={mutatorTitle} />
-          <Select label="Prompt type" value={category} onChange={setCategory} options={categories} format={categoryLabel} />
-        </div>
+        <label className="relative sm:w-64">
+          <span className="sr-only">Search prompts</span>
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted" aria-hidden />
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value)
+              setLimit(PAGE_SIZE)
+            }}
+            placeholder="Search"
+            className="h-8 w-full rounded-md border border-line-strong bg-panel pl-8 pr-2 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+          />
+        </label>
       </div>
 
       {visible.length === 0 ? (
-        <div className="p-5">
-          <EmptyState
-            icon={SearchX}
-            title="No prompts match these filters"
-            action={
-              <Button size="sm" onClick={reset}>
-                Clear filters
-              </Button>
-            }
-          />
+        <div className="p-4">
+          <EmptyState icon={SearchX} title="No matching prompts" />
         </div>
       ) : (
-        <ul className="divide-y divide-line">
-          {visible.slice(0, limit).map(({ result, index }) => (
-            <li key={index}>
-              <button
-                type="button"
-                onClick={() => onSelect(index, order)}
-                aria-label={`${OUTCOMES[result.outcome].label}: ${result.original_seed_id ?? 'prompt'}, ${mutatorTitle(result.mutator)}, ${categoryLabel(result.category)}, ${ms(result.latency_ms)}. Open details`}
-                className="group grid w-full grid-cols-[4px_1fr_auto] items-stretch gap-x-3 px-4 py-3 text-left transition-colors hover:bg-sunken/70 sm:px-5"
-              >
-                <span className={cx('rounded-full', OUTCOMES[result.outcome].swatch)} aria-hidden />
-                <span className="min-w-0">
-                  <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
-                    <span className={cx('rounded-full px-2 py-0.5 font-semibold', OUTCOMES[result.outcome].badge)}>
-                      {OUTCOMES[result.outcome].label}
-                    </span>
-                    <span className="font-mono text-muted">{result.original_seed_id}</span>
-                    <span className="text-ink-soft">{mutatorTitle(result.mutator)}</span>
-                    <span className="text-muted">· {categoryLabel(result.category)}</span>
+        <>
+          <div
+            aria-hidden
+            className={cx(
+              'hidden gap-4 border-b border-line bg-sunken/50 px-4 py-2 text-xs font-medium text-muted md:grid',
+              COLUMNS,
+            )}
+          >
+            <span>Outcome</span>
+            <span>ID</span>
+            <span>Mutator</span>
+            <span>Prompt sent</span>
+            <span className="text-right">Time</span>
+          </div>
+          <ul className="divide-y divide-line">
+            {visible.slice(0, limit).map(({ result, index }) => (
+              <li key={index}>
+                <button
+                  type="button"
+                  onClick={() => onSelect(index, order)}
+                  aria-label={`${OUTCOMES[result.outcome].label}: ${result.original_seed_id ?? 'prompt'}, ${mutatorTitle(result.mutator)}, ${categoryLabel(result.category)}, ${ms(result.latency_ms)}. Open details`}
+                  className={cx(
+                    'grid w-full grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-1 px-4 py-2.5 text-left text-sm transition-colors hover:bg-sunken/60 md:gap-x-4',
+                    COLUMNS,
+                  )}
+                >
+                  <span>
+                    <Chip className={OUTCOMES[result.outcome].badge}>{OUTCOMES[result.outcome].label}</Chip>
                   </span>
-                  <span className="mt-1.5 line-clamp-2 block font-mono text-[13px] leading-relaxed text-ink">
-                    <VisibleText text={result.prompt} />
+                  <span className="font-mono text-xs text-muted">{result.original_seed_id}</span>
+                  <span className="truncate text-right text-ink-soft md:text-left">{mutatorTitle(result.mutator)}</span>
+                  <span className="col-span-3 truncate font-mono text-[13px] text-ink md:col-span-1">
+                    <VisibleText text={result.prompt} singleLine />
                   </span>
-                </span>
-                <span className="flex items-center gap-1 self-center text-xs text-muted tabular">
-                  {ms(result.latency_ms)}
-                  <ChevronRight className="size-4 transition-transform group-hover:translate-x-0.5" aria-hidden />
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
+                  <span className="hidden text-right text-xs text-muted tabular md:block">{ms(result.latency_ms)}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
       )}
 
       {visible.length > limit && (
-        <div className="border-t border-line p-3 text-center">
+        <div className="border-t border-line p-2 text-center">
           <Button size="sm" variant="ghost" onClick={() => setLimit((l) => l + PAGE_SIZE)}>
-            Show {Math.min(PAGE_SIZE, visible.length - limit)} more
-          </Button>
-        </div>
-      )}
-      {filtersActive && visible.length > 0 && (
-        <div className="border-t border-line p-3 text-center">
-          <Button size="sm" variant="ghost" onClick={reset}>
-            Clear filters
+            Show more ({visible.length - limit} left)
           </Button>
         </div>
       )}
     </div>
-  )
-}
-
-function unique(values: string[]): string[] {
-  return [...new Set(values)]
-}
-
-function Select({
-  label,
-  value,
-  onChange,
-  options,
-  format,
-}: {
-  label: string
-  value: string
-  onChange: (v: string) => void
-  options: string[]
-  format: (v: string) => string
-}) {
-  return (
-    <label className="flex items-center gap-2 text-xs text-muted">
-      <span className="shrink-0">{label}</span>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="h-9 min-w-0 flex-1 rounded-lg border border-line-strong bg-panel px-2 text-sm text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
-      >
-        <option value="all">All</option>
-        {options.map((o) => (
-          <option key={o} value={o}>
-            {format(o)}
-          </option>
-        ))}
-      </select>
-    </label>
   )
 }

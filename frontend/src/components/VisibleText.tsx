@@ -6,7 +6,16 @@ import { cx } from './ui'
  * Renders a prompt so its hidden tricks are visible: invisible characters show
  * as amber ticks and look-alike (Cyrillic) letters are tinted red.
  */
-export function VisibleText({ text, className }: { text: string; className?: string }) {
+export function VisibleText({
+  text,
+  className,
+  singleLine = false,
+}: {
+  text: string
+  className?: string
+  /** For truncated table cells: no wrapping, newlines collapse to spaces. */
+  singleLine?: boolean
+}) {
   const parts: ReactNode[] = []
   let plain = ''
   let key = 0
@@ -45,7 +54,9 @@ export function VisibleText({ text, className }: { text: string; className?: str
 
   // wrap-anywhere (not break-words) so long unbroken strings like base64 can't
   // force their container wider than the screen.
-  return <span className={cx('whitespace-pre-wrap wrap-anywhere', className)}>{parts}</span>
+  return (
+    <span className={cx(singleLine ? 'whitespace-nowrap' : 'whitespace-pre-wrap wrap-anywhere', className)}>{parts}</span>
+  )
 }
 
 /** Legend explaining the markers, shown only when the text actually contains them. */

@@ -1,17 +1,19 @@
+import { useState } from 'react'
 import type { EvaluationResult } from '../../api/types'
+import { categoryLabel, mutatorTitle, ORIGINAL } from '../../lib/catalog'
 import { pct } from '../../lib/format'
 import { LEVEL_STYLE, levelFor, SCALES } from '../../lib/severity'
 import { cx } from '../ui'
 
-export interface BreakdownRow {
+interface BreakdownRow {
   key: string
   label: string
   bypassed: number
   total: number
 }
 
-/** Bypass rate of attack prompts, grouped by any key (disguise, attack type...). */
-export function bypassBy(
+/** Bypass rate of attack prompts, grouped by any key. Worst first. */
+function bypassBy(
   results: EvaluationResult[],
   keyOf: (r: EvaluationResult) => string,
   labelOf: (key: string) => string,
@@ -28,29 +30,59 @@ export function bypassBy(
   return [...groups.values()].sort((a, b) => b.bypassed / b.total - a.bypassed / a.total || a.label.localeCompare(b.label))
 }
 
-export function Breakdown({ title, hint, rows }: { title: string; hint: string; rows: BreakdownRow[] }) {
+type GroupBy = 'mutator' | 'category'
+
+/** "Bypass rate by mutator / attack type", switchable. Renders nothing without attacks. */
+export function BypassBreakdown({ results, hasMutators }: { results: EvaluationResult[]; hasMutators: boolean }) {
+  const [groupBy, setGroupBy] = useState<GroupBy>(hasMutators ? 'mutator' : 'category')
+  const rows =
+    groupBy === 'mutator'
+      ? bypassBy(results, (r) => r.mutator ?? ORIGINAL, mutatorTitle)
+      : bypassBy(results, (r) => r.category ?? 'unknown', categoryLabel)
+  if (rows.length === 0) return null
+
   return (
-    <div className="rounded-xl border border-line bg-panel p-4 sm:p-5">
-      <h3 className="font-semibold">{title}</h3>
-      <p className="mt-0.5 text-xs text-muted">{hint}</p>
-      <ul className="mt-4 space-y-3">
+    <div className="rounded-xl border border-line bg-panel p-4">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-sm font-semibold">Bypass rate by</h3>
+        {hasMutators ? (
+          <div role="group" aria-label="Group by" className="inline-flex rounded-md border border-line bg-sunken/70 p-0.5 text-xs">
+            {(['mutator', 'category'] as const).map((option) => (
+              <button
+                key={option}
+                type="button"
+                aria-pressed={groupBy === option}
+                onClick={() => setGroupBy(option)}
+                className={cx(
+                  'h-6 rounded px-2 font-medium',
+                  groupBy === option ? 'bg-panel text-ink shadow-[0_1px_2px_rgb(0_0_0/0.08)]' : 'text-muted hover:text-ink',
+                )}
+              >
+                {option === 'mutator' ? 'Mutator' : 'Attack type'}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <span className="text-xs text-muted">Attack type</span>
+        )}
+      </div>
+      <ul className="mt-3 space-y-2.5">
         {rows.map((row) => {
-          const rate = row.total ? row.bypassed / row.total : 0
-          const level = levelFor(rate, SCALES.bypass)
+          const rate = row.bypassed / row.total
           return (
             <li key={row.key}>
               <div className="flex items-baseline justify-between gap-3 text-sm">
                 <span className="truncate">{row.label}</span>
                 <span className="shrink-0 tabular">
-                  <span className="font-semibold">{pct(rate)}</span>{' '}
+                  <span className="font-medium">{pct(rate)}</span>{' '}
                   <span className="text-xs text-muted">
-                    ({row.bypassed}/{row.total})
+                    {row.bypassed}/{row.total}
                   </span>
                 </span>
               </div>
-              <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-sunken">
+              <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-sunken">
                 <div
-                  className={cx('h-full rounded-full transition-[width] duration-700', LEVEL_STYLE[level].bar)}
+                  className={cx('h-full rounded-full', LEVEL_STYLE[levelFor(rate, SCALES.bypass)].bar)}
                   style={{ width: `${Math.max(rate, 0.01) * 100}%` }}
                 />
               </div>

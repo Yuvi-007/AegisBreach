@@ -1,7 +1,7 @@
 import { RefreshCw, ServerOff } from 'lucide-react'
 import { api } from './api/client'
 import { Header } from './components/Header'
-import { Button, Kbd, Notice } from './components/ui'
+import { Button, Kbd } from './components/ui'
 import { ApiKeyProvider } from './lib/apiKey'
 import { useRoute } from './lib/router'
 import { useResource } from './lib/useResource'
@@ -33,23 +33,19 @@ function Shell() {
       </button>
       <Header route={route} health={health} />
 
-      <main id="main" tabIndex={-1} className="mx-auto w-full max-w-6xl flex-1 px-4 pb-28 pt-8 outline-none sm:px-6">
+      <main id="main" tabIndex={-1} className="mx-auto w-full max-w-6xl flex-1 px-4 pb-24 pt-8 outline-none sm:px-6">
         {offline && (
-          <Notice
-            tone="error"
-            title="Can't reach the AegisBreach backend"
-            className="mb-6"
-            action={
-              <Button size="sm" icon={RefreshCw} onClick={health.reload}>
-                Retry
-              </Button>
-            }
+          <div
+            role="alert"
+            className="mb-6 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-bypassed/25 bg-bypassed-soft/60 px-3 py-2 text-sm"
           >
-            <span className="inline-flex items-center gap-1.5">
-              <ServerOff className="size-4" aria-hidden /> Start it in a terminal, then retry:
-            </span>{' '}
+            <ServerOff className="size-4 shrink-0 text-bypassed" aria-hidden />
+            <span className="font-medium">Backend offline.</span>
             <Kbd>cd backend &amp;&amp; uvicorn app.main:app --env-file ../.env</Kbd>
-          </Notice>
+            <Button size="sm" variant="ghost" icon={RefreshCw} onClick={health.reload} className="ml-auto">
+              Retry
+            </Button>
+          </div>
         )}
 
         {route.page === 'new' && <NewRunPage />}

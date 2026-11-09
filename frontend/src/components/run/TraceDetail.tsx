@@ -1,11 +1,11 @@
-import { ArrowDown, Check, ChevronLeft, ChevronRight, Copy } from 'lucide-react'
+import { Check, ChevronLeft, ChevronRight, Copy } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
 import type { EvaluationResult } from '../../api/types'
 import { categoryLabel, mutatorTitle, ORIGINAL } from '../../lib/catalog'
 import { ms } from '../../lib/format'
 import { OUTCOMES } from '../../lib/outcomes'
 import { HiddenTrickLegend, VisibleText } from '../VisibleText'
-import { Button, cx, Dialog } from '../ui'
+import { Button, Chip, cx, Dialog } from '../ui'
 
 function text(value: unknown): string | undefined {
   if (typeof value === 'string' && value.trim()) return value
@@ -18,6 +18,7 @@ function targetMeta(result: EvaluationResult): Record<string, unknown> {
   return meta && typeof meta === 'object' ? (meta as Record<string, unknown>) : {}
 }
 
+/** Slide-over drawer: verdict, original vs sent prompt, gateway reply, facts. */
 export function TraceDetail({
   results,
   index,
@@ -44,26 +45,21 @@ export function TraceDetail({
     >
       {result && (
         <div className="space-y-6">
+          <TraceBody result={result} results={results} />
           {order.length > 1 && position !== -1 && (
-            <div className="flex items-center justify-between text-sm">
-              <Button
-                size="sm"
-                icon={ChevronLeft}
-                disabled={position <= 0}
-                onClick={() => onNavigate(order[position - 1])}
-              >
+            <div className="flex items-center justify-between border-t border-line pt-4">
+              <Button size="sm" variant="ghost" icon={ChevronLeft} disabled={position <= 0} onClick={() => onNavigate(order[position - 1])}>
                 Previous
               </Button>
               <span className="text-xs text-muted tabular">
-                {position + 1} of {order.length}
+                {position + 1} / {order.length}
               </span>
-              <Button size="sm" disabled={position >= order.length - 1} onClick={() => onNavigate(order[position + 1])}>
+              <Button size="sm" variant="ghost" disabled={position >= order.length - 1} onClick={() => onNavigate(order[position + 1])}>
                 Next
                 <ChevronRight className="size-4" aria-hidden />
               </Button>
             </div>
           )}
-          <TraceBody result={result} results={results} />
         </div>
       )}
     </Dialog>
@@ -73,16 +69,15 @@ export function TraceDetail({
 function TraceBody({ result, results }: { result: EvaluationResult; results: EvaluationResult[] }) {
   const meta = OUTCOMES[result.outcome]
   const target = targetMeta(result)
-  const isOriginal = (result.mutator ?? ORIGINAL) === ORIGINAL
-  const original = isOriginal
-    ? result
-    : results.find((r) => r.original_seed_id === result.original_seed_id && (r.mutator ?? ORIGINAL) === ORIGINAL)
+  const disguised = (result.mutator ?? ORIGINAL) !== ORIGINAL
+  const original = disguised
+    ? results.find((r) => r.original_seed_id === result.original_seed_id && (r.mutator ?? ORIGINAL) === ORIGINAL)
+    : undefined
   const reply =
     text(result.details.refusal_phrase) ?? text(target.reply) ?? text(result.details.message) ?? text(result.details.reason)
-  const truncated = result.details.truncated === true
 
-  const facts: [string, ReactNode][] = [
-    ['Expected', result.expected_action === 'block' ? 'Should be blocked' : 'Should be allowed'],
+  const facts: [string, string][] = [
+    ['Expected', result.expected_action === 'block' ? 'Block' : 'Allow'],
     ['Gateway verdict', text(target.verdict) ?? (result.outcome === 'DEFENDED' || result.outcome === 'FALSE_POSITIVE' ? 'Blocked' : 'Not blocked')],
     ['Response time', ms(result.latency_ms)],
     ['HTTP status', result.status_code === 0 ? 'No response' : String(result.status_code)],
@@ -91,85 +86,70 @@ function TraceBody({ result, results }: { result: EvaluationResult; results: Eva
     ['Threat category', target.threat_category],
     ['Confidence', typeof target.confidence === 'number' ? `${Math.round(target.confidence * 100)}%` : undefined],
     ['Decided by', target.rail_path],
-    ['Gateway time', typeof target.server_latency_ms === 'number' ? ms(target.server_latency_ms) : undefined],
     ['Matched phrase', target.matched_term],
     ['Error', text(result.details.error) ?? text(target.error)],
   ]
   for (const [label, value] of optional) {
-    const v = typeof value === 'string' ? value : text(value)
+    const v = text(value)
     if (v) facts.push([label, v])
   }
 
   return (
     <>
-      <div className={cx('rounded-xl p-4', meta.badge)}>
-        <p className="text-xs font-semibold uppercase tracking-wide opacity-80">Verdict</p>
-        <p className="mt-1 text-2xl font-semibold tracking-tight">{meta.label}</p>
-        <p className="mt-1 text-sm text-ink">{meta.meaning}</p>
+      <div className="flex flex-wrap items-center gap-2.5">
+        <Chip className={cx('px-2.5 py-1 text-sm', meta.badge)}>{meta.label}</Chip>
+        <p className="text-sm text-ink-soft">{meta.meaning}</p>
       </div>
 
-      {!isOriginal && (
-        <>
-          <PromptBox title="Original prompt" text={original?.prompt} muted>
-            {!original && <p className="text-sm text-muted">The undisguised prompt wasn't part of this run.</p>}
-          </PromptBox>
-          <div className="flex items-center gap-2 pl-4 text-xs font-medium text-muted">
-            <ArrowDown className="size-4" aria-hidden />
-            Disguised with: {mutatorTitle(result.mutator)}
-          </div>
-        </>
-      )}
-      <PromptBox title={isOriginal ? 'Prompt sent (no disguise)' : 'What was actually sent'} text={result.prompt}>
-        {truncated && <p className="mt-2 text-xs text-alarm">This prompt was cut short to fit the gateway's length limit.</p>}
-      </PromptBox>
-
-      <section>
-        <h3 className="mb-2 text-sm font-semibold">Gateway's reply</h3>
-        <div className="rounded-xl border border-line bg-sunken/60 p-4 text-sm">
-          {reply ? (
-            <p className="whitespace-pre-wrap break-words">{reply}</p>
-          ) : (
-            <p className="text-muted">No reply text was recorded for this prompt.</p>
-          )}
+      {disguised ? (
+        <div className="space-y-3">
+          <PromptBlock label="Original" value={original?.prompt} muted />
+          <PromptBlock label={`Sent · ${mutatorTitle(result.mutator)}`} value={result.prompt} />
         </div>
-      </section>
+      ) : (
+        <PromptBlock label="Prompt" value={result.prompt} />
+      )}
+      {result.details.truncated === true && (
+        <p className="-mt-3 text-xs text-alarm">Cut short to fit the gateway's length limit.</p>
+      )}
 
-      <section>
-        <h3 className="mb-2 text-sm font-semibold">Details</h3>
-        <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-line bg-line text-sm">
-          {facts.map(([label, value]) => (
-            <div key={label} className="bg-panel px-3 py-2.5">
-              <dt className="text-xs text-muted">{label}</dt>
-              <dd className="mt-0.5 break-words font-medium">{value}</dd>
-            </div>
-          ))}
-        </dl>
-      </section>
+      <Section label="Gateway reply">
+        <p className={cx('whitespace-pre-wrap break-words text-sm', !reply && 'text-muted')}>{reply ?? 'No reply text recorded.'}</p>
+      </Section>
+
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+        {facts.map(([label, value]) => (
+          <div key={label}>
+            <dt className="text-xs text-muted">{label}</dt>
+            <dd className="mt-0.5 break-words font-medium">{value}</dd>
+          </div>
+        ))}
+      </dl>
     </>
   )
 }
 
-function PromptBox({
-  title,
-  text: value,
-  muted = false,
-  children,
-}: {
-  title: string
-  text?: string
-  muted?: boolean
-  children?: ReactNode
-}) {
-  const [copied, setCopied] = useState(false)
+function Section({ label, aside, children }: { label: string; aside?: ReactNode; children: ReactNode }) {
   return (
     <section>
-      <div className="mb-2 flex items-center justify-between">
-        <h3 className="text-sm font-semibold">{title}</h3>
-        {value && (
-          <Button
-            size="sm"
-            variant="ghost"
-            icon={copied ? Check : Copy}
+      <div className="mb-1.5 flex items-center justify-between">
+        <h3 className="text-[11px] font-medium uppercase tracking-wide text-muted">{label}</h3>
+        {aside}
+      </div>
+      <div className="rounded-lg border border-line bg-paper/60 px-3 py-2.5">{children}</div>
+    </section>
+  )
+}
+
+function PromptBlock({ label, value, muted = false }: { label: string; value?: string; muted?: boolean }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <Section
+      label={label}
+      aside={
+        value && (
+          <button
+            type="button"
             onClick={async () => {
               try {
                 await navigator.clipboard.writeText(value)
@@ -179,20 +159,24 @@ function PromptBox({
                 // Clipboard blocked; nothing useful to do.
               }
             }}
+            className="inline-flex items-center gap-1 text-xs text-muted hover:text-ink"
           >
+            {copied ? <Check className="size-3.5" aria-hidden /> : <Copy className="size-3.5" aria-hidden />}
             {copied ? 'Copied' : 'Copy'}
-          </Button>
-        )}
-      </div>
-      {value && (
-        <div className={cx('rounded-xl border p-4', muted ? 'border-line bg-paper' : 'border-ink/20 bg-panel')}>
-          <p className="font-mono text-[13px] leading-relaxed">
+          </button>
+        )
+      }
+    >
+      {value ? (
+        <>
+          <p className={cx('font-mono text-[13px] leading-relaxed', muted && 'text-ink-soft')}>
             <VisibleText text={value} />
           </p>
           <HiddenTrickLegend text={value} />
-        </div>
+        </>
+      ) : (
+        <p className="text-sm text-muted">Not part of this run.</p>
       )}
-      {children}
-    </section>
+    </Section>
   )
 }

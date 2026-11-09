@@ -2,7 +2,7 @@ export type Level = 'good' | 'warn' | 'bad'
 
 export const LEVEL_STYLE: Record<Level, { label: string; chip: string; bar: string }> = {
   good: { label: 'Good', chip: 'bg-defended-soft text-defended', bar: 'bg-defended' },
-  warn: { label: 'Needs attention', chip: 'bg-alarm-soft text-alarm', bar: 'bg-alarm' },
+  warn: { label: 'Fair', chip: 'bg-alarm-soft text-alarm', bar: 'bg-alarm' },
   bad: { label: 'Poor', chip: 'bg-bypassed-soft text-bypassed', bar: 'bg-bypassed' },
 }
 

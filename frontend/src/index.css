@@ -19,12 +19,13 @@
   --color-accent-hover: #162b47;
   --color-accent-soft: #e2e9f2;
 
-  --color-defended: #0f766e;
-  --color-defended-soft: #d8efea;
-  --color-bypassed: #b42318;
-  --color-bypassed-soft: #fce3df;
-  --color-alarm: #a64b06;
-  --color-alarm-soft: #fbe9d0;
+  /* Emerald = defended, rose = bypassed, amber = false positive. */
+  --color-defended: #047857;
+  --color-defended-soft: #d1fae5;
+  --color-bypassed: #be123c;
+  --color-bypassed-soft: #ffe4e6;
+  --color-alarm: #b45309;
+  --color-alarm-soft: #fef3c7;
   --color-pass: #475467;
   --color-pass-soft: #e5e8ed;
   --color-error: #6b6457;

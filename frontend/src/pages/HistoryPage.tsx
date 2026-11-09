@@ -23,10 +23,8 @@ export function HistoryPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Runs</h1>
-          <p className="mt-1 text-sm text-muted">
-            Newest first. Runs are kept in the backend's memory until it restarts.
-          </p>
+          <h1 className="text-2xl font-semibold tracking-tight">Run history</h1>
+          <p className="mt-1 text-sm text-muted">Newest first. Cleared when the backend restarts.</p>
         </div>
         <Button variant="primary" icon={Plus} onClick={() => navigate({ page: 'new' })}>
           New test

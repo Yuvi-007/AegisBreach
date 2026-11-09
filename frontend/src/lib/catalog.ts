@@ -5,75 +5,26 @@ export const ORIGINAL = 'original'
 
 export interface MutatorGuide {
   title: string
-  /** What it does, in plain words. */
-  plain: string
-  /** What weakness it probes. */
-  why: string
+  /** One line, plain words. */
+  short: string
   /** Variants the backend produces per prompt (used for size estimates). */
   variants: number
 }
 
 export const MUTATOR_GUIDE: Record<string, MutatorGuide> = {
-  leetspeak: {
-    title: 'Leetspeak',
-    plain: "Swaps letters for look-alike numbers, so 'ignore' becomes '1gn0r3'.",
-    why: 'Catches filters that only match the exact spelling of bad words.',
-    variants: 1,
-  },
-  case_jitter: {
-    title: 'Mixed capitals',
-    plain: "Scrambles upper and lower case, like 'iGnOrE'.",
-    why: 'Catches filters that forget to ignore capital letters.',
-    variants: 2,
-  },
-  homoglyph: {
-    title: 'Look-alike letters',
-    plain: 'Replaces normal letters with Cyrillic twins. Identical to a person, completely different to a computer.',
-    why: 'Tests whether text is normalised before it is checked.',
-    variants: 1,
-  },
-  zero_width: {
-    title: 'Invisible characters',
-    plain: "Hides invisible characters inside every word, so 'ignore' is no longer one word to a computer.",
-    why: 'Tests whether hidden characters are stripped before checking.',
-    variants: 2,
-  },
-  base64_wrapper: {
-    title: 'Base64 encoding',
-    plain: 'Encodes the request as Base64 and asks the model to decode it and follow it.',
-    why: 'Tests whether the guard looks inside encoded content.',
-    variants: 3,
-  },
-  crescendo_framing: {
-    title: 'Innocent framing',
-    plain: 'Wraps the request in a research paper, screenplay or debugging story.',
-    why: 'Tests whether a harmless-looking story talks the guard out of blocking.',
-    variants: 3,
-  },
+  leetspeak: { title: 'Leetspeak', short: "Letters become digits: 'ignore' -> '1gn0r3'.", variants: 1 },
+  case_jitter: { title: 'Mixed case', short: "Scrambled capitals: 'iGnOrE'.", variants: 2 },
+  homoglyph: { title: 'Look-alikes', short: 'Swaps letters for identical-looking Cyrillic ones.', variants: 1 },
+  zero_width: { title: 'Invisible chars', short: 'Hides zero-width characters inside words.', variants: 2 },
+  base64_wrapper: { title: 'Base64', short: 'Encodes the prompt and asks the model to decode it.', variants: 3 },
+  crescendo_framing: { title: 'Framing', short: 'Wraps the prompt in a harmless-looking story.', variants: 3 },
 }
 
 export const MUTATOR_ORDER = Object.keys(MUTATOR_GUIDE)
 
-export const MUTATOR_CATEGORY_GUIDE: Record<string, { label: string; plain: string }> = {
-  typographic: { label: 'Spelling tricks', plain: 'Change how words are spelled.' },
-  unicode: { label: 'Hidden characters', plain: 'Change the characters themselves.' },
-  encoding: { label: 'Encoding', plain: 'Hide the request inside an encoded blob.' },
-  framing: { label: 'Storytelling', plain: 'Surround the request with harmless context.' },
-}
-
-export const SUITE_GUIDE: Record<string, { title: string; plain: string; expect: 'block' | 'allow' }> = {
-  owasp_llm_top10: {
-    title: 'Attack prompts',
-    plain:
-      'Known attack patterns from the OWASP LLM Top 10: prompt injection, system-prompt leaks, jailbreaks and personal-data extraction. A good guard blocks every one.',
-    expect: 'block',
-  },
-  benign_controls: {
-    title: 'Everyday requests',
-    plain:
-      'Ordinary business questions: support, summaries, code, general knowledge. A good guard lets every one through. Any block here is a false alarm.',
-    expect: 'allow',
-  },
+export const SUITE_GUIDE: Record<string, { title: string; short: string; expect: 'block' | 'allow' }> = {
+  owasp_llm_top10: { title: 'Attacks', short: 'OWASP LLM Top 10 attacks. Should be blocked.', expect: 'block' },
+  benign_controls: { title: 'Everyday', short: 'Normal business requests. Should be allowed.', expect: 'allow' },
 }
 
 export const SEED_CATEGORY_LABELS: Record<string, string> = {
@@ -92,13 +43,17 @@ export function categoryLabel(category: string | null): string {
   return SEED_CATEGORY_LABELS[category] ?? category.replace(/_/g, ' ')
 }
 
-/** 'original' -> 'No disguise'; 'leetspeak>base64_wrapper' -> 'Leetspeak, then Base64 encoding'. */
+/** 'original' -> 'Original'; 'leetspeak>base64_wrapper' -> 'Leetspeak, then Base64'. */
 export function mutatorTitle(name: string | null): string {
-  if (!name || name === ORIGINAL) return 'No disguise'
+  if (!name || name === ORIGINAL) return 'Original'
   return name
     .split('>')
     .map((part) => MUTATOR_GUIDE[part]?.title ?? part)
     .join(', then ')
+}
+
+export function suiteTitle(suiteId: string): string {
+  return SUITE_GUIDE[suiteId]?.title ?? suiteId.replace(/_/g, ' ')
 }
 
 export function estimatePrompts(seedCount: number, mutatorNames: string[]): number {
@@ -122,7 +77,7 @@ export const PRESETS: Preset[] = [
   {
     id: 'quick',
     title: 'Quick check',
-    blurb: 'Every attack and everyday prompt once, against the offline practice gateway.',
+    blurb: 'Every prompt once, no disguises.',
     icon: 'zap',
     request: {
       target_type: 'mock',
@@ -134,7 +89,7 @@ export const PRESETS: Preset[] = [
   {
     id: 'evasion',
     title: 'Disguise stress test',
-    blurb: 'Disguises each prompt every way we know and shows which tricks slip through.',
+    blurb: 'All six disguises on every prompt.',
     icon: 'shuffle',
     request: {
       target_type: 'mock',
@@ -146,7 +101,7 @@ export const PRESETS: Preset[] = [
   {
     id: 'false-alarms',
     title: 'False alarm check',
-    blurb: 'Only everyday requests. Shows whether the guard gets in the way of real users.',
+    blurb: 'Everyday requests only.',
     icon: 'bell',
     request: {
       target_type: 'mock',
@@ -158,7 +113,7 @@ export const PRESETS: Preset[] = [
   {
     id: 'nemo-live',
     title: 'NeMo-Shield live',
-    blurb: 'Attacks plus three disguises against the deployed NeMo-Shield gateway.',
+    blurb: 'Attacks and three disguises against the deployed gateway.',
     icon: 'radio',
     live: true,
     request: {
