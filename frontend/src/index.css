@@ -1,0 +1,84 @@
+@import "tailwindcss";
+
+/* Design tokens. Colour is reserved for meaning: teal = defended, red = bypassed,
+   amber = false alarm, slate = benign pass, stone = errors. Everything else is ink on paper. */
+@theme {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Code", "SFMono-Regular", Menlo, Consolas, monospace;
+
+  --color-paper: #f5f3ee;
+  --color-panel: #fffdf9;
+  --color-sunken: #efece5;
+  --color-ink: #1c1e21;
+  --color-ink-soft: #3d4248;
+  --color-muted: #5c6168;
+  --color-line: #e2ddd3;
+  --color-line-strong: #cbc4b6;
+
+  --color-accent: #1f3a5f;
+  --color-accent-hover: #162b47;
+  --color-accent-soft: #e2e9f2;
+
+  --color-defended: #0f766e;
+  --color-defended-soft: #d8efea;
+  --color-bypassed: #b42318;
+  --color-bypassed-soft: #fce3df;
+  --color-alarm: #a64b06;
+  --color-alarm-soft: #fbe9d0;
+  --color-pass: #475467;
+  --color-pass-soft: #e5e8ed;
+  --color-error: #6b6457;
+  --color-error-soft: #ebe7df;
+}
+
+@layer base {
+  html {
+    background: var(--color-paper);
+    color: var(--color-ink);
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    font-family: var(--font-sans);
+    min-height: 100vh;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+  ::selection {
+    background: var(--color-accent-soft);
+  }
+  dialog::backdrop {
+    background: rgb(28 30 33 / 0.4);
+  }
+}
+
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Diagonal hatching marks "no verdict" (errors) without relying on colour alone. */
+@utility hatch {
+  background-image: repeating-linear-gradient(135deg, transparent 0 3px, rgb(255 255 255 / 0.45) 3px 5px);
+}
+
+@keyframes indeterminate {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(280%); }
+}
+.progress-indeterminate {
+  animation: indeterminate 1.3s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progress-indeterminate {
+    animation: none;
+    transform: none;
+    width: 100%;
+    opacity: 0.5;
+  }
+  *, ::before, ::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
