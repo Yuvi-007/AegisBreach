@@ -74,7 +74,8 @@ def validate_target_url(url: str) -> tuple[bool, str]:
         if not hostname:
             return False, "Missing hostname"
 
-        parsed.port  # Raises ValueError for an out-of-range or non-numeric port.
+        # Reading .port raises ValueError for an out-of-range or non-numeric port.
+        _ = parsed.port
 
         addr_info = socket.getaddrinfo(hostname, None)
     except socket.gaierror as exc:

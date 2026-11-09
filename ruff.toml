@@ -1,0 +1,2 @@
+# Imports use the `app.*` package that lives in backend/ (see pytest.ini).
+src = ["backend"]
