@@ -145,7 +145,8 @@ class PinnedDNSBackend(httpcore.AsyncNetworkBackend):
         if unsafe is not None:
             raise SSRFBlockedError(f"Restricted IP: {unsafe} (resolved from {host})")
 
-        last_error: Exception | None = None
+        # ips is non-empty here, so the loop always replaces this default.
+        last_error: Exception = httpcore.ConnectError(f"Could not connect to {host}")
         for ip in ips:
             try:
                 return await self._inner.connect_tcp(
@@ -157,7 +158,6 @@ class PinnedDNSBackend(httpcore.AsyncNetworkBackend):
                 )
             except (httpcore.ConnectError, httpcore.ConnectTimeout) as exc:
                 last_error = exc
-        assert last_error is not None
         raise last_error
 
     async def connect_unix_socket(

@@ -64,10 +64,6 @@ export function Button({
 
 // --- Small pieces -------------------------------------------------------------------
 
-export function Spinner({ className }: { className?: string }) {
-  return <Loader2 className={cx('size-4 animate-spin', className)} aria-hidden />
-}
-
 export function Chip({ className, children }: { className?: string; children: ReactNode }) {
   return (
     <span className={cx('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium', className)}>
@@ -78,35 +74,6 @@ export function Chip({ className, children }: { className?: string; children: Re
 
 export function Skeleton({ className }: { className?: string }) {
   return <div className={cx('animate-pulse rounded-lg bg-sunken', className)} aria-hidden />
-}
-
-export function SectionTitle({
-  step,
-  title,
-  hint,
-  aside,
-}: {
-  step?: number
-  title: string
-  hint?: string
-  aside?: ReactNode
-}) {
-  return (
-    <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-      <div>
-        <h2 className="flex items-center gap-2.5 text-lg font-semibold tracking-tight">
-          {step !== undefined && (
-            <span className="grid size-6 place-items-center rounded-full bg-ink text-xs font-semibold text-paper">
-              {step}
-            </span>
-          )}
-          {title}
-        </h2>
-        {hint && <p className="mt-1 max-w-2xl text-sm text-muted">{hint}</p>}
-      </div>
-      {aside}
-    </div>
-  )
 }
 
 // --- Notice -------------------------------------------------------------------------

@@ -236,9 +236,9 @@ is zero. p95 latency uses the **nearest-rank** method. The same results always p
 
 ### Full Test Coverage
 
-- **461 tests passing**, **100% line coverage** across the backend (`backend/app`, 947 statements).
+- **461 tests passing**, **100% line coverage** across the backend (`backend/app`, 946 statements).
 - **Ruff:** all checks pass.
-- **Bandit:** zero medium- or high-severity findings.
+- **Bandit:** zero findings at any severity (low, medium, or high) in `backend/app`.
 
 ---
 
@@ -384,7 +384,7 @@ npm run build
 | pytest | 461 passed, 2 skipped (live) |
 | Coverage | 100% of `backend/app` |
 | Ruff | All checks passed |
-| Bandit | 0 medium / 0 high |
+| Bandit | 0 low / 0 medium / 0 high |
 
 ---
 

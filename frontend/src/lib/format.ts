@@ -32,10 +32,6 @@ export function timeAgo(iso: string, now = Date.now()): string {
   return relative.format(Math.round(seconds / 86_400), 'day')
 }
 
-export function dateTime(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
-}
-
 export function duration(startIso: string | null, endIso: string | null): string | null {
   if (!startIso || !endIso) return null
   return ms(new Date(endIso).getTime() - new Date(startIso).getTime())
