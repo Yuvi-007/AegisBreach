@@ -21,16 +21,37 @@ MOCK_RUN = {"target_type": "mock", "suite_names": ["owasp_llm_top10"]}
 REAL_BUILD_ADAPTER = bench_endpoints.build_adapter
 
 
+TEST_API_KEY = "test-key-" + "x" * 32
+
+
 @pytest.fixture
 def store() -> RunStore:
     return RunStore(max_runs=50, max_active_runs=5)
 
 
+@pytest.fixture(autouse=True)
+def auth_env(monkeypatch):
+    """Every test starts with a configured key and no development bypass."""
+    monkeypatch.setenv("AEGIS_API_KEY", TEST_API_KEY)
+    monkeypatch.delenv("AEGIS_ENV", raising=False)
+
+
 @pytest_asyncio.fixture
 async def client(store):
+    """Authenticated client."""
     app.dependency_overrides[get_run_store] = lambda: store
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    headers = {"X-API-Key": TEST_API_KEY}
+    async with httpx.AsyncClient(transport=transport, base_url="http://test", headers=headers) as c:
+        yield c
+    app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture
+async def anon(store):
+    """Client that sends no API key."""
+    app.dependency_overrides[get_run_store] = lambda: store
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as c:
         yield c
     app.dependency_overrides.clear()
 
@@ -93,8 +114,24 @@ async def test_cors_allows_local_frontend_only(client):
     headers = {"Access-Control-Request-Method": "GET"}
     allowed = await client.options(f"{API}/mutators", headers={**headers, "Origin": "http://localhost:5173"})
     assert allowed.headers["access-control-allow-origin"] == "http://localhost:5173"
+    assert "x-api-key" in allowed.headers["access-control-allow-headers"].lower()
     denied = await client.options(f"{API}/mutators", headers={**headers, "Origin": "https://evil.example"})
     assert "access-control-allow-origin" not in denied.headers
+
+
+@pytest.mark.asyncio
+async def test_browser_preflight_for_api_key_header_succeeds(anon):
+    """Browsers send OPTIONS without the key; it must not be rejected with 401."""
+    response = await anon.options(
+        f"{API}/run",
+        headers={
+            "Origin": "http://localhost:5173",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type,x-api-key",
+        },
+    )
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:5173"
 
 
 def test_cors_origins_from_environment(monkeypatch):
@@ -103,6 +140,134 @@ def test_cors_origins_from_environment(monkeypatch):
     monkeypatch.setenv("AEGIS_CORS_ORIGINS", " https://ui.example , ,http://localhost:8080 ")
     assert cors_origins() == ["https://ui.example", "http://localhost:8080"]
     assert create_app().title == "AegisBreach API"
+
+
+# --- API key authentication ---------------------------------------------------------
+
+PROTECTED = [
+    ("GET", f"{API}/mutators"),
+    ("GET", f"{API}/suites"),
+    ("GET", f"{API}/runs"),
+    ("GET", f"{API}/runs/{uuid.UUID(int=1)}"),
+    ("POST", f"{API}/run"),
+]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path", ["/", f"{API}/health", "/docs", "/openapi.json"])
+async def test_public_routes_need_no_key(anon, path):
+    assert (await anon.get(path)).status_code == 200
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("method", "path"), PROTECTED)
+@pytest.mark.parametrize(
+    "headers",
+    [
+        {},
+        {"X-API-Key": ""},
+        {"X-API-Key": "wrong"},
+        {"X-API-Key": TEST_API_KEY[:-1] + "y"},   # same length, last char differs
+        {"X-API-Key": TEST_API_KEY + "x"},        # correct key as a prefix
+        {"X-API-Key": TEST_API_KEY.upper()},
+        {"Authorization": f"Bearer {TEST_API_KEY}"},  # right key, wrong header
+    ],
+    ids=["missing", "empty", "wrong", "one-char-off", "too-long", "wrong-case", "wrong-header"],
+)
+async def test_protected_routes_reject_missing_or_invalid_keys(anon, store, method, path, headers):
+    response = await anon.request(method, path, headers=headers, json=MOCK_RUN if method == "POST" else None)
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Invalid or missing API key"}
+    assert response.headers["www-authenticate"] == "X-API-Key"
+    assert len(store) == 0
+
+
+@pytest.mark.asyncio
+async def test_non_ascii_key_is_rejected_not_a_server_error(anon):
+    response = await anon.get(f"{API}/mutators", headers={"X-API-Key": "caf\xe9".encode("latin-1")})
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_valid_key_starts_a_run(anon):
+    response = await anon.post(f"{API}/run", json=MOCK_RUN, headers={"X-API-Key": TEST_API_KEY})
+    assert response.status_code == 202
+
+
+@pytest.mark.asyncio
+async def test_auth_is_checked_before_the_body(anon):
+    """Unauthenticated callers learn nothing about request validation."""
+    response = await anon.post(f"{API}/run", json={"target_type": "nope"})
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_surrounding_whitespace_in_configured_key_is_ignored(anon, monkeypatch):
+    monkeypatch.setenv("AEGIS_API_KEY", f"  {TEST_API_KEY}\n")
+    assert (await anon.get(f"{API}/mutators", headers={"X-API-Key": TEST_API_KEY})).status_code == 200
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("configured", ["", "   ", "your-secure-key-here"])
+@pytest.mark.parametrize("environment", [None, "production", "staging", "dev"])
+async def test_no_configured_key_fails_closed(anon, monkeypatch, configured, environment):
+    monkeypatch.setenv("AEGIS_API_KEY", configured)
+    if environment is not None:
+        monkeypatch.setenv("AEGIS_ENV", environment)
+    for key in (None, "your-secure-key-here", "anything"):
+        headers = {} if key is None else {"X-API-Key": key}
+        assert (await anon.get(f"{API}/mutators", headers=headers)).status_code == 401
+    assert (await anon.get(f"{API}/health")).status_code == 200
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("environment", ["development", " Development "])
+async def test_development_mode_allows_requests_when_no_key_is_set(anon, monkeypatch, environment):
+    monkeypatch.delenv("AEGIS_API_KEY")
+    monkeypatch.setenv("AEGIS_ENV", environment)
+    assert (await anon.get(f"{API}/mutators")).status_code == 200
+    assert (await anon.post(f"{API}/run", json=MOCK_RUN)).status_code == 202
+
+
+@pytest.mark.asyncio
+async def test_development_mode_does_not_bypass_a_configured_key(anon, monkeypatch):
+    monkeypatch.setenv("AEGIS_ENV", "development")
+    assert (await anon.get(f"{API}/mutators")).status_code == 401
+    assert (await anon.get(f"{API}/mutators", headers={"X-API-Key": TEST_API_KEY})).status_code == 200
+
+
+def test_openapi_documents_the_api_key_scheme():
+    schema = app.openapi()
+    assert schema["components"]["securitySchemes"]["APIKeyHeader"] == {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key",
+        "description": "API key; must match the server's AEGIS_API_KEY setting.",
+    }
+    assert "security" in schema["paths"][f"{API}/run"]["post"]
+    assert "security" not in schema["paths"][f"{API}/health"]["get"]
+
+
+@pytest.mark.parametrize(
+    ("key", "environment", "message"),
+    [
+        (None, "development", "authentication is OFF"),
+        (None, None, "will return 401"),
+        (TEST_API_KEY, None, None),
+    ],
+)
+def test_startup_warns_about_missing_key(monkeypatch, caplog, key, environment, message):
+    monkeypatch.delenv("AEGIS_API_KEY", raising=False)
+    if key:
+        monkeypatch.setenv("AEGIS_API_KEY", key)
+    if environment:
+        monkeypatch.setenv("AEGIS_ENV", environment)
+    with caplog.at_level("WARNING", logger="app.main"):
+        create_app()
+    if message:
+        assert message in caplog.text
+    else:
+        assert caplog.text == ""
 
 
 # --- catalogue -----------------------------------------------------------------------

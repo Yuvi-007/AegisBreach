@@ -1,5 +1,10 @@
-"""FastAPI application. Run from backend/: uvicorn app.main:app"""
+"""FastAPI application.
 
+Run from backend/ with settings from the repo's .env file:
+    uvicorn app.main:app --env-file ../.env
+"""
+
+import logging
 import os
 from typing import Any
 
@@ -7,6 +12,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.router import api_router
+from app.core.security import (
+    API_KEY_ENV,
+    API_KEY_HEADER,
+    auth_disabled_for_development,
+    configured_api_key,
+)
+
+logger = logging.getLogger(__name__)
 
 API_TITLE = "AegisBreach API"
 API_VERSION = "1.0.0"
@@ -32,8 +45,12 @@ def create_app() -> FastAPI:
         allow_origins=cors_origins(),
         allow_credentials=False,
         allow_methods=["GET", "POST"],
-        allow_headers=["Content-Type"],
+        allow_headers=["Content-Type", API_KEY_HEADER],
     )
+    if auth_disabled_for_development():
+        logger.warning("%s is not set and AEGIS_ENV=development: API authentication is OFF", API_KEY_ENV)
+    elif configured_api_key() is None:
+        logger.warning("%s is not set: all protected API routes will return 401", API_KEY_ENV)
     app.include_router(api_router, prefix="/api/v1")
 
     @app.get("/", tags=["health"])

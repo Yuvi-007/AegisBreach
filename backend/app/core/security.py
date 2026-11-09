@@ -6,15 +6,20 @@ the DNS-rebinding gap where a host resolves to a public IP during validation
 and to an internal IP when the request is actually sent.
 """
 
+import hashlib
 import ipaddress
+import os
+import secrets
 import socket
 from collections.abc import Awaitable, Callable, Iterable
-from typing import Any
+from typing import Annotated, Any
 from urllib.parse import urlparse
 
 import anyio
 import httpcore
 import httpx
+from fastapi import HTTPException, Security, status
+from fastapi.security import APIKeyHeader
 
 ALLOWED_SCHEMES = ("http", "https")
 CLOUD_METADATA_IP = ipaddress.ip_address("169.254.169.254")
@@ -208,3 +213,64 @@ def create_safe_client(**kwargs: Any) -> httpx.AsyncClient:
     kwargs["trust_env"] = False
     kwargs.setdefault("timeout", DEFAULT_TIMEOUT)
     return httpx.AsyncClient(transport=PinnedDNSTransport(**transport_kwargs), **kwargs)
+
+
+# --- API key authentication ---------------------------------------------------------
+
+API_KEY_HEADER = "X-API-Key"
+API_KEY_ENV = "AEGIS_API_KEY"
+ENVIRONMENT_ENV = "AEGIS_ENV"
+# The value shipped in .env.example. Treated as "no key configured" so a copied,
+# unedited example file can't become a publicly known key.
+PLACEHOLDER_API_KEY = "your-secure-key-here"
+
+_api_key_header = APIKeyHeader(
+    name=API_KEY_HEADER,
+    auto_error=False,
+    description=f"API key; must match the server's {API_KEY_ENV} setting.",
+)
+
+
+def configured_api_key() -> str | None:
+    """The server's API key from the environment, or None if unset/placeholder."""
+    key = os.environ.get(API_KEY_ENV, "").strip()
+    return key if key and key != PLACEHOLDER_API_KEY else None
+
+
+def auth_disabled_for_development() -> bool:
+    """True only when no key is configured and AEGIS_ENV=development."""
+    environment = os.environ.get(ENVIRONMENT_ENV, "").strip().lower()
+    return configured_api_key() is None and environment == "development"
+
+
+def verify_api_key(provided: Annotated[str | None, Security(_api_key_header)]) -> None:
+    """FastAPI dependency that rejects requests without the right X-API-Key.
+
+    Fails closed: with no key configured, every request is rejected unless
+    AEGIS_ENV=development. Clients get the same 401 either way, so they can't
+    tell a missing server key from a wrong one.
+    """
+    expected = configured_api_key()
+    if expected is None:
+        if auth_disabled_for_development():
+            return
+        raise _unauthorized()
+    if provided is None or not _keys_match(provided, expected):
+        raise _unauthorized()
+
+
+def _keys_match(provided: str, expected: str) -> bool:
+    """Constant-time comparison. Hashing first makes both sides the same length
+    (so the length isn't leaked either) and handles non-ASCII header values,
+    which compare_digest rejects for str input."""
+    provided_hash = hashlib.sha256(provided.encode("utf-8", "surrogateescape")).digest()
+    expected_hash = hashlib.sha256(expected.encode("utf-8")).digest()
+    return secrets.compare_digest(provided_hash, expected_hash)
+
+
+def _unauthorized() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid or missing API key",
+        headers={"WWW-Authenticate": API_KEY_HEADER},
+    )
