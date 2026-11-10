@@ -1,5 +1,6 @@
 # AegisBreach: Automated Adversarial LLM Evaluation & Stress-Testing Benchmark Engine
 
+[![CI](https://github.com/Yuvi-007/AegisBreach/actions/workflows/ci.yml/badge.svg)](https://github.com/Yuvi-007/AegisBreach/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-009688?logo=fastapi&logoColor=white)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
