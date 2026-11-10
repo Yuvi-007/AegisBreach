@@ -8,9 +8,21 @@
 ![Tests](https://img.shields.io/badge/tests-474%20passed-brightgreen)
 ![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)
 ![Ruff](https://img.shields.io/badge/ruff-passing-brightgreen)
+![Bandit](https://img.shields.io/badge/bandit-0%2F0%2F0-brightgreen)
 
 AegisBreach is the **offensive, automated red-teaming counterpart** to defensive LLM guardrails such as
 NeMo-Shield. A guardrail tells you it blocks attacks; AegisBreach measures how well it actually does.
+
+### Part of a two-project LLM security suite
+
+| | Project | Role |
+| --- | --- | --- |
+| 🛡️ | **[NeMo-Shield Gateway](https://github.com/Yuvi-007/NeMo-Shield)** (Project 1) | The **defensive** runtime security guardrail. Colang rails and MongoDB-backed policy and audit storage sit in front of an LLM and block malicious prompts. |
+| ⚔️ | **AegisBreach Red-Team Bench** (Project 2, this repo) | The **offensive** fuzzing and mutation benchmark engine. It stress-tests NeMo-Shield (or any compatible guardrail) and reports how many attacks get through. |
+
+The two projects are built to run against each other. AegisBreach's `nemo_shield` target adapter calls a
+deployed NeMo-Shield gateway directly. See the [Visual Tour](#visual-tour) for a live audit against
+`nemo-shield-api.onrender.com`.
 
 It takes seed attacks mapped to the **OWASP Top 10 for LLM Applications**, runs them through an
 adversarial **mutation pipeline** (leetspeak, homoglyphs, zero-width characters, Base64 smuggling,
@@ -32,6 +44,7 @@ with a deterministic judge. Benign control prompts run alongside the attacks, so
 
 ## Table of Contents
 
+- [Visual Tour](#visual-tour)
 - [Architecture](#architecture)
 - [Pipeline Components](#pipeline-components)
 - [Engineering & Security Highlights](#engineering--security-highlights)
@@ -42,6 +55,46 @@ with a deterministic judge. Benign control prompts run alongside the attacks, so
 - [Testing & Quality Gates](#testing--quality-gates)
 - [Project Structure](#project-structure)
 - [Responsible Use](#responsible-use)
+
+---
+
+## Visual Tour
+
+### 1. Test Configuration & Attack Presets
+
+![AegisBreach New Test page with four quick-start presets and the custom run form](docs/assets/test-launcher.png)
+
+*The minimal launcher. Four quick-start presets (Quick check, Disguise stress test, False alarm check,
+NeMo-Shield live) sit above a custom run form. That form lets you pick the target (offline practice
+gateway or a real gateway), the datasets (OWASP Top 10 for LLMs attack seeds and benign everyday
+requests), and any of the six mutators.*
+
+### 2. Live Red-Team Audit against NeMo-Shield Runtime Gateway
+
+![Live AegisBreach run against nemo-shield-api.onrender.com showing defense, bypass, false positive and latency metrics](docs/assets/nemo-shield-live-audit.png)
+
+*A live run against the deployed NeMo-Shield gateway at `nemo-shield-api.onrender.com`: 80 attack
+prompts and 80 benign controls, with 3 mutators (leetspeak, invisible chars, look-alikes). Results:
+23% defense rate, 74% bypass rate, 0% false positives, and 1.30 s p95 latency. The bypass breakdown by
+mutator shows leetspeak as the most effective disguise (94%). The banner flags the 3 prompts that got
+no verdict, so errors never inflate the score.*
+
+### 3. Benign Controls & Precision Validation
+
+![False alarm check run showing 0% false positive rate across 16 everyday requests](docs/assets/false-alarm-results.png)
+
+*The False alarm check preset sends only everyday requests (password resets, order issues, and so on)
+to measure precision. All 16 were allowed, for a **0% false positive rate**. A guardrail that blocks
+everything can't hide behind a perfect defense score.*
+
+### 4. Interactive Trace Inspector & Bypass Heatmap
+
+![Quick check results with per-prompt outcome grid and bypass rate by attack category](docs/assets/quick-check-results.png)
+
+*Run detail view. The outcome grid shows one cell per prompt (bypassed, defended, allowed, error). The
+bypass rate is broken down by OWASP attack category (personal data extraction, prompt injection, system
+prompt leak, jailbreak). Below that, a filterable, searchable trace table lists every prompt sent with
+its mutator, outcome, and latency.*
 
 ---
 
